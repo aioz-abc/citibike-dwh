@@ -1,0 +1,14 @@
+# Пароль берётся только из переменной окружения DBT_PG_PASS.
+# Запуск: dbt build --profiles-dir . -s dm_daily_station_activity_dbt
+ozbekova:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: "{{ env_var('DBT_PG_HOST', 'localhost') }}"
+      port: "{{ env_var('DBT_PG_PORT', '5432') | int }}"
+      user: "{{ env_var('DBT_PG_USER', 'ozbekova') }}"
+      pass: "{{ env_var('DBT_PG_PASS') }}"
+      dbname: aiacademy
+      schema: ozbekova_datamart
+      threads: 2

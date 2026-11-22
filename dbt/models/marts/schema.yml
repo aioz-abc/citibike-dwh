@@ -1,0 +1,61 @@
+version: 2
+
+models:
+  - name: dm_daily_station_activity_dbt
+    description: >
+      Дневная активность станций Citi Bike и погода. Зерно — один день (activity_date).
+      Должна совпадать с витриной ozbekova_datamart.dm_daily_station_activity из DAG.
+    columns:
+      - name: activity_date
+        description: День (Нью-Йорк), за который собраны снимки.
+        tests: [unique, not_null]
+      - name: stations_reported
+        description: Сколько разных станций попало в снимки за день.
+        tests: [not_null]
+      - name: snapshots_cnt
+        description: Число снимков «станция × момент» за день (≈ станции × 96 снимков по 15 минут).
+        tests: [not_null]
+      - name: empty_snapshots
+        description: Снимки, где станция работала, но велосипедов 0 (station_state = 'empty').
+        tests: [not_null]
+      - name: full_snapshots
+        description: Снимки, где станция работала, но свободных доков 0 (station_state = 'full').
+      - name: offline_snapshots
+        description: Снимки, где станция не установлена или не выдаёт велосипеды.
+      - name: empty_share
+        description: empty_snapshots / снимки работающих станций.
+      - name: avg_bikes_available
+        description: Среднее число доступных велосипедов на работающей станции.
+      - name: avg_ebikes_available
+        description: Среднее число доступных электровелосипедов на работающей станции.
+      - name: temp_max_c
+        description: Максимальная температура дня, °C (API Open-Meteo).
+      - name: temp_min_c
+        description: Минимальная температура дня, °C (API Open-Meteo).
+      - name: precipitation_mm
+        description: Сумма осадков за день, мм (API Open-Meteo).
+      - name: is_rainy
+        description: Дождливый день — осадков не меньше 1 мм (API Open-Meteo).
+
+  - name: dm_rain_impact_dbt
+    description: >
+      Влияние дождя на спрос Citi Bike: будни / выходные × сухо / дождь / ливень.
+      Строится из ods_trips_daily и ods_weather (DAG истории).
+    columns:
+      - name: day_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["weekday", "weekend"]
+      - name: rain_level
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["dry", "rain", "heavy_rain"]
+      - name: days_cnt
+        description: Сколько дней в группе.
+        tests: [not_null]
+      - name: avg_trips
+        description: Среднее число поездок в день.
+      - name: change_vs_dry
+        description: Изменение avg_trips против сухого дня того же типа (0 у самих сухих дней).

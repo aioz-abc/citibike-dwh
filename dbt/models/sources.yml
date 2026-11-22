@@ -1,0 +1,90 @@
+version: 2
+
+sources:
+  - name: ods
+    schema: ozbekova_ods
+    description: Слой ods, наполняется DAG final_ozbekova_pipeline и CDC.
+    tables:
+      - name: ods_stations
+        description: Справочник станций Citi Bike (одна строка на станцию).
+        columns:
+          - name: station_id
+            tests: [unique, not_null]
+          - name: capacity_category
+            tests:
+              - accepted_values:
+                  values: ["small", "medium", "large", "unknown"]
+
+      - name: ods_station_status
+        description: Снимки состояния станций из GBFS station_status (станция × момент снимка).
+        columns:
+          - name: station_id
+            tests: [not_null]
+          - name: snapshot_ts
+            tests: [not_null]
+          - name: station_state
+            tests:
+              - accepted_values:
+                  values: ["offline", "empty", "full", "normal"]
+
+      - name: ods_weather
+        description: Погода в Нью-Йорке за день из Open-Meteo (одна строка на день).
+        columns:
+          - name: weather_date
+            tests: [unique, not_null]
+
+      - name: ods_trips_daily
+        description: Поездки из архива Citi Bike, день × станция × тип клиента × тип велосипеда (DAG истории).
+        columns:
+          - name: trip_date
+            tests: [not_null]
+          - name: start_station_id
+            tests: [not_null]
+          - name: member_casual
+            tests:
+              - accepted_values:
+                  values: ["member", "casual"]
+          - name: rideable_type
+            tests:
+              - accepted_values:
+                  values: ["classic_bike", "electric_bike"]
+          - name: trips
+            tests: [not_null]
+
+      - name: ods_maintenance_tickets
+        description: Текущее состояние заявок на ремонт станций (CDC из ozbekova.maintenance_tickets).
+        columns:
+          - name: ticket_id
+            tests: [unique, not_null]
+          - name: status
+            tests:
+              - accepted_values:
+                  values: ["open", "in_progress", "closed"]
+
+  - name: datamart
+    schema: ozbekova_datamart
+    description: Витрины, которые строят DAG final_ozbekova_datamart и final_ozbekova_history.
+    tables:
+      - name: dm_weather_trips_daily
+        description: Поездки и погода за день (DAG истории).
+        columns:
+          - name: trip_date
+            tests: [unique, not_null]
+          - name: rain_level
+            tests:
+              - accepted_values:
+                  values: ["dry", "rain", "heavy_rain"]
+      - name: dm_hourly_station_state
+        description: Снимки по часам и размеру станции.
+        columns:
+          - name: hour_of_day
+            tests:
+              - not_null
+              - accepted_values:
+                  values: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+                  quote: false
+      - name: dm_station_daily
+        description: Снимки по станциям за день, с координатами для карты.
+        columns:
+          - name: station_id
+            tests: [not_null]

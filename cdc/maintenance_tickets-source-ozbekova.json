@@ -1,0 +1,23 @@
+{
+  "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+  "tasks.max": "1",
+  "plugin.name": "pgoutput",
+  "database.hostname": "${PG_HOST}",
+  "database.port": "${PG_PORT}",
+  "database.user": "${PG_USER}",
+  "database.password": "${PG_PASS}",
+  "database.dbname": "aiacademy",
+  "topic.prefix": "ozbekova_site",
+  "schema.include.list": "ozbekova",
+  "table.include.list": "ozbekova.maintenance_tickets",
+  "slot.name": "ozbekova_slot",
+  "publication.name": "ozbekova_pub",
+  "publication.autocreate.mode": "filtered",
+  "snapshot.mode": "initial",
+  "time.precision.mode": "connect",
+  "decimal.handling.mode": "double",
+  "key.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "key.converter.schemas.enable": "true",
+  "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+  "value.converter.schemas.enable": "true"
+}
