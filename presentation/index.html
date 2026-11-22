@@ -1,0 +1,485 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Citi Bike DWH</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Oswald:wght@400..700&family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+/* Layout: fixed 1920x1080 stage scaled to the window; one idea per slide; mint = bikes available, orange = empty station */
+:root{
+  color-scheme:dark;
+  --bg:#0B1322; --bg2:#101B2F; --card:#0E182A; --line:#22324C;
+  --tx:#EEF3F8; --mut:#A8B6C9; --dim:#7D8CA3;
+  --bike:#3EE6A8; --empty:#FF8A4C; --rain:#7CC4FF; --slate:#3A4C6B;
+  --osw:'Oswald','Arial Narrow',Arial,sans-serif;
+  --plex:'IBM Plex Sans',Arial,sans-serif;
+  --mono:'JetBrains Mono','Courier New',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;background:#060B15;overflow:hidden;color:var(--tx);font-family:var(--plex)}
+body{padding-left:max(0px,env(safe-area-inset-left,0px));padding-right:max(0px,env(safe-area-inset-right,0px))}
+#stage{position:absolute;width:1920px;height:1080px;left:0;top:0;transform-origin:0 0;overflow:hidden;background:var(--bg)}
+.slide{position:absolute;inset:0;padding:110px 128px 140px;display:flex;flex-direction:column;gap:40px;opacity:0;visibility:hidden;transition:opacity .6s ease,visibility 0s linear .6s;background:var(--bg)}
+.slide.alt{background:var(--bg2)}
+.slide.active{opacity:1;visibility:visible;transition:opacity .6s ease}
+.eyebrow{font-family:var(--mono);font-size:24px;color:var(--bike);letter-spacing:4px;text-transform:uppercase}
+h1,h2,h3,.osw{font-family:var(--osw);font-weight:600;line-height:1.08;text-wrap:balance}
+h2{font-size:72px}
+h3{font-size:40px;font-weight:500}
+p{font-size:28px;line-height:1.4}
+.mut{color:var(--mut)} .dim{color:var(--dim)} .bk{color:var(--bike)} .em{color:var(--empty)} .rn{color:var(--rain)}
+.mono{font-family:var(--mono)}
+.big{font-family:var(--osw);font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.src{position:absolute;left:128px;right:128px;bottom:52px;font-size:22px;color:var(--dim)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:24px;padding:40px;position:relative;overflow:hidden}
+.row{display:flex;gap:32px}
+.col{display:flex;flex-direction:column;gap:16px}
+.f1{flex:1;min-width:0}
+.pill{display:inline-block;font-family:var(--mono);font-size:20px;padding:6px 16px;border-radius:999px;border:1px solid var(--dim);color:var(--mut);white-space:nowrap}
+.pill.bk{border-color:var(--bike);color:var(--bike)} .pill.em{border-color:var(--empty);color:var(--empty)}
+canvas{display:block}
+
+/* reveal */
+.r,.sv{opacity:0}
+.slide.active .r{animation:rise .9s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--d,0)*130ms + 150ms)}
+.slide.active .rl{animation-name:fromLeft}
+.slide.active .rs{animation-name:pop}
+.slide.active .sv{animation:fadeIn .7s ease both;animation-delay:calc(var(--d,0)*130ms + 150ms)}
+@keyframes rise{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:none}}
+@keyframes fromLeft{from{opacity:0;transform:translateX(-60px)}to{opacity:1;transform:none}}
+@keyframes pop{0%{opacity:0;transform:scale(.6)}70%{opacity:1;transform:scale(1.06)}100%{opacity:1;transform:scale(1)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes flow{to{stroke-dashoffset:-40}}
+@keyframes shine{0%{transform:translateX(-150%) rotate(25deg)}60%,100%{transform:translateX(250%) rotate(25deg)}}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+.shine{position:absolute;top:-50%;left:0;width:30%;height:200%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.07),transparent);animation:shine 4.5s ease-in-out infinite;pointer-events:none}
+
+/* bars */
+.track{height:56px;border-radius:10px;background:#16233A;overflow:hidden}
+.bar{height:100%;width:0;border-radius:10px;transition:width 1.6s cubic-bezier(.2,.8,.2,1)}
+.vb{transform-box:fill-box;transform-origin:50% 100%}
+.ticks{display:grid;grid-template-columns:repeat(48,1fr);gap:4px}
+.ticks i{height:14px;border-radius:3px;background:#1E2C45}
+.slide.active .ticks i{animation:tick .25s ease both;animation-delay:calc(var(--k)*28ms + 900ms)}
+@keyframes tick{to{background:var(--bike)}}
+
+/* tables */
+table.tb{width:100%;border-collapse:collapse}
+.tb th{font-family:var(--mono);font-size:20px;letter-spacing:2px;text-transform:uppercase;color:var(--dim);text-align:left;font-weight:400;padding:0 20px 14px;border-bottom:1px solid var(--line)}
+.tb td{font-size:27px;line-height:1.35;padding:18px 20px;border-bottom:1px solid var(--line);vertical-align:top}
+.tb td.k{font-weight:600}
+.tb td.c{font-family:var(--mono);font-size:22px;color:var(--mut)}
+.tb tr.rw{opacity:0}
+.slide.active .tb tr.rw{animation:fromLeft .7s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--d)*180ms + 400ms)}
+
+/* chrome */
+#bar{position:absolute;left:0;bottom:0;height:6px;background:linear-gradient(90deg,var(--bike),#9AF5D2);width:0;transition:width .5s ease;z-index:20}
+#num{position:absolute;right:48px;bottom:40px;font-family:var(--mono);font-size:22px;color:var(--dim);z-index:20}
+#brand{position:absolute;right:48px;top:40px;font-family:var(--mono);font-size:20px;letter-spacing:4px;color:var(--dim);z-index:20}
+#help{position:fixed;left:max(16px,env(safe-area-inset-left,0px));bottom:calc(12px + env(safe-area-inset-bottom,0px));font:13px var(--mono);color:#4A5E80;z-index:40;transition:opacity 1s}
+
+@media (prefers-reduced-motion: reduce){
+  .r,.sv,.tb tr.rw{opacity:1!important;animation:none!important}
+  .bar{transition:none}
+  .shine{display:none}
+  .slide.active .ticks i{animation:none;background:var(--bike)}
+}
+</style>
+
+<div id="stage">
+
+<section class="slide" id="s-cover" style="justify-content:center;background:radial-gradient(circle at 80% 45%,#10283A 0%,#0B1322 60%)">
+<canvas id="map1" width="1920" height="1080" style="position:absolute;inset:0"></canvas>
+<div class="col" style="gap:36px;position:relative;width:1000px">
+<p class="eyebrow r" style="--d:0">Data Engineering · AI Academy · финальный проект</p>
+<h1 class="r" style="--d:1;font-size:112px">Когда станции Citi&nbsp;Bike остаются <span class="em">без велосипедов?</span></h1>
+<p class="r mut" style="--d:2;font-size:36px">Хранилище данных о доступности велосипедов и погоде в Нью-Йорке</p>
+</div>
+<p class="r mono" id="clock1" style="--d:3;position:absolute;left:1120px;top:120px;font-size:30px;color:var(--mut)">06:00</p>
+<div class="r" style="--d:4;position:absolute;left:1120px;bottom:64px;display:flex;gap:28px;font-size:22px;font-family:var(--mono);color:var(--mut)"><span><span class="bk">●</span> есть велосипеды</span><span><span class="em">●</span> станция пустая</span></div>
+<p class="r" style="--d:4;position:absolute;left:128px;bottom:64px;font-size:32px"><b>Айжан Озбекова</b></p>
+</section>
+
+<section class="slide alt" id="s-task">
+<div class="col"><p class="eyebrow r" style="--d:0">Задача</p><h2 class="r" style="--d:1">Пустая станция — это потерянная поездка</h2></div>
+<p class="r mut" style="--d:2;font-size:30px;max-width:1500px">Заказчик — команда, которая развозит велосипеды по <span style="color:var(--tx)"><b><span data-count="2500">0</span> станциям</b></span> и должна знать, куда ехать первой.</p>
+<div class="card r" style="--d:3;padding:24px 36px;display:flex;align-items:center;gap:28px">
+<div class="col f1" style="gap:4px"><p class="mono em" style="font-size:20px;letter-spacing:2px">БИШКЕК</p><p style="font-size:24px">Прокат самокатов и велосипедов решает ту же задачу, но <b>открытых живых данных нет</b></p></div>
+<span class="big bk" style="font-size:48px">→</span>
+<div class="col f1" style="gap:4px"><p class="mono bk" style="font-size:20px;letter-spacing:2px">НЬЮ-ЙОРК</p><p style="font-size:24px">Citi Bike открыто публикует состояние станций в стандарте <b>GBFS</b></p></div>
+<span class="big bk" style="font-size:48px">→</span>
+<div class="col f1" style="gap:4px"><p class="mono bk" style="font-size:20px;letter-spacing:2px">ПЕРЕНОС</p><p style="font-size:24px">Тот же пайплайн подходит любому прокату с фидом GBFS</p></div>
+</div>
+<div class="row f1">
+<div class="card f1 col r" style="--d:4;gap:20px"><div class="shine"></div>
+<svg width="88" height="88" viewBox="0 0 88 88" aria-label="Часы"><circle cx="44" cy="44" r="36" fill="none" stroke="#3EE6A8" stroke-width="5"/><path d="M44 22V44L60 54" fill="none" stroke="#FF8A4C" stroke-width="6" stroke-linecap="round"/></svg>
+<h3>Когда станции пустеют?</h3><p class="mut" style="font-size:26px">По дням и по часам</p></div>
+<div class="card f1 col r" style="--d:5;gap:20px"><div class="shine"></div>
+<svg width="88" height="88" viewBox="0 0 88 88" aria-label="Дождь"><path d="M24 50a14 14 0 0 1 2-28 18 18 0 0 1 34 4 12 12 0 0 1 2 24z" fill="none" stroke="#3EE6A8" stroke-width="5" stroke-linejoin="round"/><path d="M30 60l-5 12M46 60l-5 12M62 60l-5 12" stroke="#7CC4FF" stroke-width="5" stroke-linecap="round"/></svg>
+<h3>Как влияет погода?</h3><p class="mut" style="font-size:26px">Поездки и осадки за тот же день</p></div>
+<div class="card f1 col r" style="--d:6;gap:20px"><div class="shine"></div>
+<svg width="88" height="88" viewBox="0 0 88 88" aria-label="Станции трёх размеров"><rect x="6" y="56" width="18" height="24" rx="4" fill="#FF8A4C"/><rect x="34" y="36" width="18" height="44" rx="4" fill="#3EE6A8"/><rect x="62" y="12" width="18" height="68" rx="4" fill="#3EE6A8"/></svg>
+<h3>Какие станции страдают сильнее?</h3><p class="mut" style="font-size:26px">Малые, средние, большие</p></div>
+</div>
+</section>
+
+<section class="slide" id="s-data">
+<div class="col"><p class="eyebrow r" style="--d:0">Объём данных</p><h2 class="r" style="--d:1">С какими данными я работаю</h2></div>
+<div class="row">
+<div class="card f1 col r" style="--d:2;gap:14px"><div class="shine"></div>
+<p class="big bk" style="font-size:136px"><span data-count="15">0</span><span style="font-size:72px"> млн</span></p>
+<p style="font-size:30px;font-weight:600">поездок за июль–сентябрь</p>
+<p class="mut" style="font-size:24px">≈ 3 ГБ архива, около 1 ГБ в месяц</p></div>
+<div class="card f1 col r" style="--d:3;gap:14px"><div class="shine"></div>
+<p class="big bk" style="font-size:136px"><span data-count="240">0</span><span style="font-size:72px"> тыс.</span></p>
+<p style="font-size:30px;font-weight:600">снимков станций в день</p>
+<p class="mut" style="font-size:24px">2 500 станций × 96 снимков — каждые 15 минут</p>
+<div class="ticks" id="ticks" aria-label="96 снимков за сутки"></div></div>
+<div class="card f1 col r" style="--d:4;gap:14px"><div class="shine"></div>
+<p class="big bk" style="font-size:136px" data-count="4">0</p>
+<p style="font-size:30px;font-weight:600">источника</p>
+<p class="mut" style="font-size:24px">справочник станций · снимки GBFS · погода Open-Meteo · заявки на ремонт</p></div>
+</div>
+<div class="card r" style="--d:6;padding:32px 40px;display:flex;align-items:center;gap:40px">
+<div class="col" style="width:360px;flex:none;gap:4px"><p class="mono dim" style="font-size:20px;letter-spacing:2px">СЖАТИЕ ПРИ ЗАГРУЗКЕ</p><p style="font-size:26px">Поездки → агрегаты, на месяц</p></div>
+<div class="col f1" style="gap:12px">
+<div class="row" style="align-items:center;gap:20px"><div class="track f1" style="height:36px"><div class="bar" data-w="100%" style="background:var(--slate)"></div></div><span class="big mut" style="font-size:40px;width:200px">5 млн</span></div>
+<div class="row" style="align-items:center;gap:20px"><div class="track f1" style="height:36px"><div class="bar" data-w="6%" data-delay="1400" style="background:var(--bike)"></div></div><span class="big bk" style="font-size:40px;width:200px">300 тыс.</span></div>
+</div>
+<p class="big bk" style="font-size:64px;flex:none">≈17×</p>
+</div>
+</section>
+
+<section class="slide alt" id="s-arch" style="gap:32px">
+<div class="col"><p class="eyebrow r" style="--d:0">Как это устроено</p><h2 class="r" style="--d:1">Данные идут слева направо, без ручной работы</h2></div>
+<svg viewBox="0 0 1664 390" style="width:1664px;height:390px" aria-label="Схема: источники, stg, ods, datamart, ClickHouse, Superset; Airflow управляет; заявки идут через CDC">
+<g font-family="JetBrains Mono, monospace">
+<g class="sv" style="--d:2"><rect x="322" y="14" width="1056" height="56" rx="14" fill="#0E182A" stroke="#3EE6A8" stroke-width="2"/><text x="850" y="50" text-anchor="middle" fill="#EEF3F8" font-size="22">Airflow: сборщик каждые 15 минут · загрузка каждую ночь · перезапуск без дублей</text>
+<path d="M427 70V120M709 70V120M991 70V120M1273 70V120" stroke="#3EE6A8" stroke-width="2" stroke-dasharray="4 6"/></g>
+<path d="M250 180H322M532 180H604M814 180H886M1096 180H1168M1378 180H1450" stroke="#22324C" stroke-width="14" stroke-linecap="round"/>
+<path d="M250 180H322M532 180H604M814 180H886M1096 180H1168M1378 180H1450" stroke="#3EE6A8" stroke-width="3" stroke-dasharray="8 12" style="animation:flow 1s linear infinite"/>
+<path id="cdcp" d="M250 335 C 450 335, 600 330, 709 242" fill="none" stroke="#FF8A4C" stroke-width="3" stroke-dasharray="8 8" style="animation:flow .5s linear infinite"/>
+<circle r="8" fill="#FF8A4C"><animateMotion dur="1.2s" repeatCount="indefinite" path="M250 335 C 450 335, 600 330, 709 242"/></circle>
+<g class="sv" style="--d:3"><rect x="0" y="120" width="250" height="120" rx="16" fill="#0E182A" stroke="#A8B6C9" stroke-width="2"/><text x="125" y="172" text-anchor="middle" fill="#EEF3F8" font-size="26" font-family="Oswald, sans-serif">Источники</text><text x="125" y="206" text-anchor="middle" fill="#A8B6C9" font-size="18">станции·погода·поездки</text></g>
+<g class="sv" style="--d:4"><rect x="322" y="120" width="210" height="120" rx="16" fill="#0E182A" stroke="#3EE6A8" stroke-width="2"/><text x="427" y="172" text-anchor="middle" fill="#EEF3F8" font-size="30" font-family="Oswald, sans-serif">stg</text><text x="427" y="206" text-anchor="middle" fill="#A8B6C9" font-size="18">как пришло</text></g>
+<g class="sv" style="--d:5"><rect x="604" y="120" width="210" height="120" rx="16" fill="#0E182A" stroke="#3EE6A8" stroke-width="2"/><text x="709" y="172" text-anchor="middle" fill="#EEF3F8" font-size="30" font-family="Oswald, sans-serif">ods</text><text x="709" y="206" text-anchor="middle" fill="#A8B6C9" font-size="18">чистые, с ключами</text></g>
+<g class="sv" style="--d:6"><rect x="886" y="120" width="210" height="120" rx="16" fill="#0E182A" stroke="#3EE6A8" stroke-width="2"/><text x="991" y="172" text-anchor="middle" fill="#EEF3F8" font-size="30" font-family="Oswald, sans-serif">datamart</text><text x="991" y="206" text-anchor="middle" fill="#A8B6C9" font-size="18">5 витрин</text></g>
+<g class="sv" style="--d:7"><rect x="1168" y="120" width="210" height="120" rx="16" fill="#0E182A" stroke="#3EE6A8" stroke-width="2"/><text x="1273" y="172" text-anchor="middle" fill="#EEF3F8" font-size="30" font-family="Oswald, sans-serif">ClickHouse</text><text x="1273" y="206" text-anchor="middle" fill="#A8B6C9" font-size="18">быстрые агрегаты</text></g>
+<g class="sv" style="--d:8"><rect x="1450" y="120" width="210" height="120" rx="16" fill="#3EE6A8"/><text x="1555" y="172" text-anchor="middle" fill="#0B1322" font-size="30" font-family="Oswald, sans-serif">Superset</text><text x="1555" y="206" text-anchor="middle" fill="#0B1322" font-size="18">дашборд</text></g>
+<g class="sv" style="--d:9"><rect x="0" y="300" width="250" height="70" rx="16" fill="#0E182A" stroke="#FF8A4C" stroke-width="2"/><text x="125" y="342" text-anchor="middle" fill="#EEF3F8" font-size="20">заявки на ремонт</text><text x="470" y="368" text-anchor="middle" fill="#FF8A4C" font-size="20">CDC: Debezium → Kafka</text></g>
+<circle r="7" fill="#9AF5D2"><animateMotion dur="3.2s" repeatCount="indefinite" path="M250 180H1450"/></circle>
+<circle r="7" fill="#9AF5D2"><animateMotion dur="3.2s" begin="1.06s" repeatCount="indefinite" path="M250 180H1450"/></circle>
+<circle r="7" fill="#9AF5D2"><animateMotion dur="3.2s" begin="2.13s" repeatCount="indefinite" path="M250 180H1450"/></circle>
+</g>
+</svg>
+<div class="row">
+<div class="card f1 col r" style="--d:10;gap:8px;padding:28px 32px"><p class="big bk" style="font-size:72px"><span data-count="2">0</span> базы</p><p style="font-size:24px" class="mut">Postgres — загрузка и исправления, ClickHouse — быстрая аналитика</p></div>
+<div class="card f1 col r" style="--d:11;gap:8px;padding:28px 32px"><p class="big bk" style="font-size:72px">0 дублей</p><p style="font-size:24px" class="mut">Каждая задача удаляет свой день и пишет заново</p></div>
+<div class="card f1 col r" style="--d:12;gap:8px;padding:28px 32px"><p class="big bk" style="font-size:72px"><span data-count="21">0</span> + <span data-count="37">0</span></p><p style="font-size:24px" class="mut">Проверки качества и тесты dbt: ошибка не дойдёт до дашборда</p></div>
+<div class="card f1 col r" style="--d:13;gap:8px;padding:28px 32px"><p class="big em" style="font-size:72px">~<span data-count="10">0</span> с</p><p style="font-size:24px" class="mut">Заявка на ремонт видна в хранилище через CDC</p></div>
+</div>
+</section>
+
+<section class="slide" id="s-weather">
+<canvas id="rain" width="1920" height="1080" style="position:absolute;inset:0;opacity:.5"></canvas>
+<div class="col" style="position:relative"><p class="eyebrow r" style="--d:0">Результат 1 · погода</p><h2 class="r" style="--d:1">Дождь отнимает почти каждую пятую поездку</h2></div>
+<div class="row f1" style="gap:80px;align-items:center;position:relative">
+<div class="col f1" style="gap:36px">
+<div class="col r" style="--d:2;gap:10px"><p style="font-size:30px">Сухой будний день</p><div class="row" style="align-items:center;gap:24px"><div class="track f1"><div class="bar" data-w="100%" style="background:var(--slate)"></div></div><span class="big mut" style="font-size:52px;width:170px">база</span></div></div>
+<div class="col r" style="--d:3;gap:10px"><p style="font-size:30px">Дождь</p><div class="row" style="align-items:center;gap:24px"><div class="track f1"><div class="bar" data-w="82%" style="background:var(--rain)"></div></div><span class="big rn" style="font-size:52px;width:170px">−<span data-count="18">0</span>%</span></div></div>
+<div class="col r" style="--d:4;gap:10px"><p style="font-size:30px">Ливень, от 10 мм</p><div class="row" style="align-items:center;gap:24px"><div class="track f1"><div class="bar" data-w="72%" style="background:var(--empty)"></div></div><span class="big em" style="font-size:52px;width:170px">−<span data-count="28">0</span>%</span></div></div>
+<p class="dim r" style="--d:5;font-size:22px">Поездок за день, будни сравниваются с буднями</p>
+</div>
+<div class="col r" style="--d:6;width:520px;flex:none;gap:24px">
+<div class="card col" style="gap:8px;padding:32px"><p class="mono dim" style="font-size:20px">РАЗОВЫЕ КЛИЕНТЫ</p><p class="big em" style="font-size:96px">−<span data-count="23">0</span>%</p></div>
+<div class="card col" style="gap:8px;padding:32px"><p class="mono dim" style="font-size:20px">ПОДПИСЧИКИ</p><p class="big mut" style="font-size:96px">−<span data-count="17">0</span>%</p></div>
+</div>
+</div>
+<p class="r" style="--d:8;font-size:36px;position:relative"><span class="bk">→</span> По прогнозу дождя можно заранее сокращать перевозки</p>
+<p class="src">15 млн поездок Citi Bike, июль–сентябрь · погода Open-Meteo</p>
+</section>
+
+<section class="slide alt" id="s-rush">
+<div class="col"><p class="eyebrow r" style="--d:0">Результат 2 · когда и где</p><h2 class="r" style="--d:1">Утром пустеют малые станции, вечером — большие</h2></div>
+<div class="row f1" style="gap:64px;align-items:center">
+<svg viewBox="0 0 1040 560" style="width:1000px;height:540px;flex:none" aria-label="Доля пустых снимков по размеру станции: в 8:00 малые 7,4%, средние 4,9%, большие 1,9%; в 18–19 часов малые 4,2–4,3%, средние 4,8–5,3%, большие 7,3–8,0%">
+<g font-family="JetBrains Mono, monospace" font-size="20" fill="#7D8CA3">
+<path d="M70 460H1030M70 371H1030M70 282H1030M70 193H1030M70 104H1030" stroke="#22324C" stroke-width="1"/>
+<text x="56" y="467" text-anchor="end">0%</text><text x="56" y="378" text-anchor="end">2%</text><text x="56" y="289" text-anchor="end">4%</text><text x="56" y="200" text-anchor="end">6%</text><text x="56" y="111" text-anchor="end">8%</text>
+</g>
+<g>
+<rect class="vb" x="100" y="131" width="100" height="329" rx="6" fill="#FF8A4C"/>
+<rect class="vb" x="230" y="242" width="100" height="218" rx="6" fill="#3A4C6B"/>
+<rect class="vb" x="360" y="376" width="100" height="84" rx="6" fill="#3A4C6B"/>
+<rect class="vb" x="600" y="271" width="100" height="189" rx="6" fill="#3A4C6B"/>
+<rect class="vb" x="730" y="236" width="100" height="224" rx="6" fill="#3A4C6B"/>
+<rect class="vb" x="860" y="120" width="100" height="340" rx="6" fill="#FF8A4C"/>
+</g>
+<g class="vl" font-family="JetBrains Mono, monospace" font-size="22" text-anchor="middle">
+<text x="150" y="119" fill="#FF8A4C" font-weight="700">7,4%</text>
+<text x="280" y="230" fill="#A8B6C9">4,9%</text>
+<text x="410" y="364" fill="#A8B6C9">1,9%</text>
+<text x="650" y="259" fill="#A8B6C9">4,2–4,3%</text>
+<text x="780" y="224" fill="#A8B6C9">4,8–5,3%</text>
+<text x="910" y="108" fill="#FF8A4C" font-weight="700">7,3–8,0%</text>
+</g>
+<g font-family="IBM Plex Sans, sans-serif" font-size="22" fill="#A8B6C9" text-anchor="middle">
+<text x="150" y="494">малые</text><text x="280" y="494">средние</text><text x="410" y="494">большие</text>
+<text x="650" y="494">малые</text><text x="780" y="494">средние</text><text x="910" y="494">большие</text>
+</g>
+<g font-family="Oswald, sans-serif" font-size="30" fill="#EEF3F8" text-anchor="middle">
+<text x="280" y="544">8:00 · утро</text><text x="780" y="544">18:00–19:00 · вечер</text>
+</g>
+</svg>
+<div class="col f1" style="gap:24px">
+<div class="card col r" style="--d:5;gap:10px;padding:32px"><p class="mono em" style="font-size:22px">УТРО</p><p style="font-size:30px">Грузовики — на <b>малые станции</b> в жилых районах</p></div>
+<div class="card col r" style="--d:6;gap:10px;padding:32px"><p class="mono em" style="font-size:22px">ВЕЧЕР</p><p style="font-size:30px">Грузовики — на <b>большие станции</b> в деловых районах</p></div>
+<p class="r mut" style="--d:7;font-size:26px">Люди едут на работу и обратно. Карта и часы — на дашборде в Superset.</p>
+</div>
+</div>
+<p class="src">Доля пустых снимков: станция работает, но велосипедов 0 · малые &lt; 20 доков, средние 20–39, большие ≥ 40</p>
+</section>
+
+<section class="slide" id="s-sum" style="justify-content:center;background:radial-gradient(circle at 80% 45%,#10283A 0%,#0B1322 60%)">
+<canvas id="map2" width="1920" height="1080" style="position:absolute;inset:0"></canvas>
+<div class="col" style="gap:30px;position:relative;width:1000px">
+<p class="eyebrow r" style="--d:0">Итог</p>
+<h2 class="r" style="--d:1">Хранилище работает каждый день и отвечает на три вопроса</h2>
+<p class="r rl" style="--d:2;font-size:32px"><span class="bk">✓</span> Работает само: каждые 15 минут и каждую ночь</p>
+<p class="r rl" style="--d:3;font-size:32px"><span class="bk">✓</span> Данные проверены: 21 проверка и 37 тестов dbt</p>
+<p class="r rl" style="--d:4;font-size:32px"><span class="bk">✓</span> Даёт решение: куда и когда везти велосипеды</p>
+<p class="r rl" style="--d:5;font-size:32px"><span class="em">→</span> Следующий шаг: подключить прокат в Бишкеке</p>
+<p class="r osw bk" style="--d:6;font-size:60px;font-weight:500;margin-top:12px">Чтобы в 8 утра велосипед был на месте.</p>
+</div>
+<p class="r" style="--d:7;position:absolute;left:128px;bottom:64px;font-size:32px">Спасибо! <span class="mut">Готова ответить на вопросы · Айжан Озбекова</span></p>
+</section>
+
+<section class="slide alt" id="s-size">
+<div class="col"><p class="eyebrow r" style="--d:0">Запасной · размер станции</p><h2 class="r" style="--d:1">Малые станции пустеют в два раза чаще больших</h2></div>
+<div class="col f1" style="gap:36px;justify-content:center">
+<div class="col r" style="--d:2;gap:10px"><p style="font-size:30px">Малые, меньше 20 доков</p><div class="row" style="align-items:center;gap:24px"><div class="track f1"><div class="bar" data-w="100%" style="background:var(--empty)"></div></div><span class="big em" style="font-size:56px;width:170px"><span data-count="6.4" data-dec="1">0</span>%</span></div></div>
+<div class="col r" style="--d:3;gap:10px"><p style="font-size:30px">Средние, 20–39</p><div class="row" style="align-items:center;gap:24px"><div class="track f1"><div class="bar" data-w="80%" style="background:var(--slate)"></div></div><span class="big mut" style="font-size:56px;width:170px"><span data-count="5.1" data-dec="1">0</span>%</span></div></div>
+<div class="col r" style="--d:4;gap:10px"><p style="font-size:30px">Большие, от 40</p><div class="row" style="align-items:center;gap:24px"><div class="track f1"><div class="bar" data-w="50%" style="background:var(--bike)"></div></div><span class="big bk" style="font-size:56px;width:170px"><span data-count="3.2" data-dec="1">0</span>%</span></div></div>
+</div>
+<p class="src">Доля пустых снимков за сутки. В среднем станция пуста в 5,1% снимков, на ней 13,7 велосипеда. Дашборд Superset: 12 чартов, карта, фильтр по периоду</p>
+</section>
+
+<section class="slide" id="s-airflow">
+<div class="col"><p class="eyebrow r" style="--d:0">Запасной · Airflow</p><h2 class="r" style="--d:1">Четыре DAG, загрузка за дату ds</h2></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+<div class="card col r" style="--d:2;gap:12px;padding:32px"><div class="row" style="justify-content:space-between;align-items:center"><p class="mono" style="font-size:24px">final_ozbekova_pipeline</p><span class="pill bk">02:00 NY</span></div><p class="mut" style="font-size:26px">3 задачи stg → 3 задачи ods → запуск DAG витрин с той же датой</p></div>
+<div class="card col r" style="--d:3;gap:12px;padding:32px"><div class="row" style="justify-content:space-between;align-items:center"><p class="mono" style="font-size:24px">final_ozbekova_datamart</p><span class="pill bk">триггер</span></div><p class="mut" style="font-size:26px">4 витрины → 15 проверок качества → копия в ClickHouse</p></div>
+<div class="card col r" style="--d:4;gap:12px;padding:32px"><div class="row" style="justify-content:space-between;align-items:center"><p class="mono" style="font-size:24px">final_ozbekova_collector</p><span class="pill bk">15 мин</span></div><p class="mut" style="font-size:26px">Снимок GBFS → CSV за день; повтор снимка пропускается</p></div>
+<div class="card col r" style="--d:5;gap:12px;padding:32px"><div class="row" style="justify-content:space-between;align-items:center"><p class="mono" style="font-size:24px">final_ozbekova_history</p><span class="pill bk">@monthly</span></div><p class="mut" style="font-size:26px">Catchup июль–сентябрь: архив поездок ~1 ГБ в месяц и погода</p></div>
+</div>
+<div class="card r" style="--d:7;display:flex;gap:24px;align-items:center;padding:28px 40px;border-color:var(--bike)"><span class="big bk" style="font-size:48px">✓</span><p style="font-size:28px"><b>Идемпотентность:</b> каждая задача удаляет свою порцию (день или месяц) и вставляет заново — перезапуск не даёт дублей</p></div>
+</section>
+
+<section class="slide alt" id="s-quality">
+<div class="col"><p class="eyebrow r" style="--d:0">Запасной · качество данных</p><h2 class="r" style="--d:1">Проверки в DAG и тесты в dbt</h2></div>
+<div class="row">
+<div class="card f1 col r" style="--d:2;gap:10px"><div class="shine"></div><p class="big bk" style="font-size:136px" data-count="21">0</p><p style="font-size:28px">проверка качества: 15 в dq_checks, 6 в dq_history — все OK</p></div>
+<div class="card f1 col r" style="--d:3;gap:10px"><div class="shine"></div><p class="big bk" style="font-size:136px"><span data-count="37">0</span><span class="mut" style="font-size:72px">/37</span></p><p style="font-size:28px">тестов dbt PASS, плюс 2 модели (dbt build 39/39)</p></div>
+</div>
+<table class="tb">
+<tr class="rw" style="--d:0"><td class="k">unique и not_null</td><td class="mut">по ключам ods и витрин</td></tr>
+<tr class="rw" style="--d:1"><td class="k">Допустимые значения</td><td class="mut">station_state, capacity_category, статус заявки</td></tr>
+<tr class="rw" style="--d:2"><td class="k">Ровно одна строка за ds</td><td class="mut">погода и дневная витрина</td></tr>
+<tr class="rw" style="--d:3"><td class="k">Сверка</td><td class="mut">витрина dbt совпадает с витриной из DAG</td></tr>
+</table>
+</section>
+
+<section class="slide" id="s-cdc">
+<div class="col"><p class="eyebrow r" style="--d:0">Запасной · CDC</p><h2 class="r" style="--d:1">Изменения «базы сайта» доходят за секунды</h2></div>
+<svg viewBox="0 0 1664 170" style="width:1664px;height:170px" aria-label="Postgres → Debezium → Kafka → JDBC sink → ods">
+<path d="M330 85H1334" stroke="#22324C" stroke-width="14"/>
+<path d="M330 85H1334" stroke="#FF8A4C" stroke-width="3" stroke-dasharray="8 10" style="animation:flow .6s linear infinite"/>
+<circle r="8" fill="#FF8A4C"><animateMotion dur="1.6s" repeatCount="indefinite" path="M330 85H1334"/></circle>
+<circle r="8" fill="#FF8A4C"><animateMotion dur="1.6s" begin=".8s" repeatCount="indefinite" path="M330 85H1334"/></circle>
+<g font-family="JetBrains Mono, monospace" text-anchor="middle">
+<g class="sv" style="--d:2"><rect x="0" y="20" width="330" height="130" rx="16" fill="#0E182A" stroke="#A8B6C9" stroke-width="2"/><text x="165" y="76" fill="#EEF3F8" font-size="28" font-family="Oswald, sans-serif">Postgres</text><text x="165" y="112" fill="#A8B6C9" font-size="18">maintenance_tickets</text></g>
+<g class="sv" style="--d:3"><rect x="445" y="20" width="300" height="130" rx="16" fill="#0E182A" stroke="#FF8A4C" stroke-width="2"/><text x="595" y="76" fill="#EEF3F8" font-size="28" font-family="Oswald, sans-serif">Debezium</text><text x="595" y="112" fill="#A8B6C9" font-size="18">читает WAL</text></g>
+<g class="sv" style="--d:4"><rect x="860" y="20" width="300" height="130" rx="16" fill="#0E182A" stroke="#FF8A4C" stroke-width="2"/><text x="1010" y="76" fill="#EEF3F8" font-size="28" font-family="Oswald, sans-serif">Kafka</text><text x="1010" y="112" fill="#A8B6C9" font-size="18">топик изменений</text></g>
+<g class="sv" style="--d:5"><rect x="1334" y="20" width="330" height="130" rx="16" fill="#3EE6A8"/><text x="1499" y="76" fill="#0B1322" font-size="28" font-family="Oswald, sans-serif">JDBC sink → ods</text><text x="1499" y="112" fill="#0B1322" font-size="18">upsert + delete</text></g>
+</g>
+</svg>
+<table class="tb">
+<tr><th style="width:45%">Действие в источнике</th><th>Результат в ods_maintenance_tickets</th></tr>
+<tr class="rw" style="--d:0"><td class="k">Снимок при старте</td><td class="mut">все 8 заявок</td></tr>
+<tr class="rw" style="--d:1"><td class="k">UPDATE ticket 1 → closed</td><td class="mut">статус обновился</td></tr>
+<tr class="rw" style="--d:2"><td class="k">INSERT ticket 9, затем DELETE</td><td class="mut">строка появилась и удалилась</td></tr>
+</table>
+<p class="src">Коннекторы: maintenance_tickets-source-ozbekova, sink-ozbekova · задержка около 10 секунд</p>
+</section>
+
+<section class="slide alt" id="s-marts">
+<div class="col"><p class="eyebrow r" style="--d:0">Запасной · витрины</p><h2 class="r" style="--d:1">Пять витрин, две ключевые</h2></div>
+<div class="row">
+<div class="card f1 col r" style="--d:2;gap:14px"><p class="mono bk" style="font-size:26px">dm_daily_station_activity</p><p style="font-size:28px"><b>Зерно:</b> день</p><p class="mut" style="font-size:24px">Снимков, пустых / полных / offline, доля пустых, среднее велосипедов и e-bike, погода дня: temp_max, осадки, is_rainy</p><span class="pill bk" style="align-self:flex-start">копия в ClickHouse</span></div>
+<div class="card f1 col r" style="--d:3;gap:14px"><p class="mono bk" style="font-size:26px">dm_station_size_monthly</p><p style="font-size:28px"><b>Зерно:</b> месяц × размер станции</p><p class="mut" style="font-size:24px">Малые &lt; 20 доков, средние 20–39, большие ≥ 40; доля пустых, заполненность, пустые снимки в дождливые дни</p><span class="pill bk" style="align-self:flex-start">вопрос про размер</span></div>
+</div>
+<p class="r" style="--d:4;font-size:28px"><b>Ещё три:</b> <span class="mut">по часам, по станциям с координатами для карты, «поездки и погода».</span></p>
+<p class="r" style="--d:5;font-size:28px"><b>Сверка:</b> <span class="mut">сумма пустых снимков за месяц в дневной и месячной витринах совпадает.</span></p>
+</section>
+
+<section class="slide" id="s-sources">
+<div class="col"><p class="eyebrow r" style="--d:0">Запасной · источники</p><h2 class="r" style="--d:1">Два файла, внешний API и «база сайта»</h2></div>
+<table class="tb">
+<tr><th>Источник</th><th>Тип</th><th>Что внутри</th><th>Куда</th></tr>
+<tr class="rw" style="--d:0"><td class="k">Справочник станций</td><td class="c">CSV</td><td class="mut">станции, число доков</td><td class="c">stg_stations</td></tr>
+<tr class="rw" style="--d:1"><td class="k">Снимки состояния станций</td><td class="c">CSV за день</td><td class="mut">GBFS каждые 15 минут</td><td class="c">stg_station_status</td></tr>
+<tr class="rw" style="--d:2"><td class="k">Погода</td><td class="c">API Open-Meteo</td><td class="mut">температура, осадки за день</td><td class="c">stg_weather</td></tr>
+<tr class="rw" style="--d:3"><td class="k">Заявки на ремонт</td><td class="c">таблица Postgres</td><td class="mut">«база сайта»</td><td class="c">CDC → ods</td></tr>
+</table>
+<p class="r mut" style="--d:5;font-size:26px">Файл снимков пишет DAG-сборщик: раз в 15 минут забирает снимок gbfs.citibikenyc.com и дописывает в CSV за день по времени Нью-Йорка.</p>
+</section>
+
+<section class="slide alt" id="s-nfr">
+<div class="col"><p class="eyebrow r" style="--d:0">Запасной · надёжность</p><h2 class="r" style="--d:1">Что будет, если что-то пойдёт не так</h2></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+<div class="card col r" style="--d:2;gap:12px;padding:36px"><h3>Перезапуск за ту же дату</h3><p class="mut" style="font-size:26px">delete за ds + insert: та же порция, без дублей</p></div>
+<div class="card col r" style="--d:3;gap:12px;padding:36px"><h3>API погоды недоступен</h3><p class="mut" style="font-size:26px">Таймаут и 3 попытки; запись только после полного ответа — старые данные не портятся</p></div>
+<div class="card col r" style="--d:4;gap:12px;padding:36px"><h3>Пароли</h3><p class="mut" style="font-size:26px">Только в Airflow Connections и переменных окружения; в коде и конфигах — плейсхолдеры</p></div>
+<div class="card col r" style="--d:5;gap:12px;padding:36px"><h3>Журнал загрузок</h3><p class="mut" style="font-size:26px">etl_load_log: старт, успех, ошибка, ретрай и число строк каждой задачи</p></div>
+</div>
+</section>
+
+<section class="slide" id="s-scale">
+<div class="col"><p class="eyebrow r" style="--d:0">Запасной · масштабирование</p><h2 class="r" style="--d:1">А если не один Нью-Йорк, а 50 городов?</h2></div>
+<div class="row r" style="--d:2;align-items:center;gap:40px"><p class="big mut" style="font-size:88px"><span data-count="240">0</span> тыс.</p><span class="big bk" style="font-size:64px">→</span><p class="big em" style="font-size:88px"><span data-count="12">0</span> млн</p><p class="mut" style="font-size:26px">снимков в день</p></div>
+<table class="tb">
+<tr class="rw" style="--d:0"><td class="k" style="width:30%">Снимки</td><td class="mut">партиции ods_station_status по дате, тяжёлые агрегаты — в ClickHouse</td></tr>
+<tr class="rw" style="--d:1"><td class="k">Города</td><td class="mut">колонка city в ключах, DAG генерируется по списку городов: формат GBFS у всех один</td></tr>
+<tr class="rw" style="--d:2"><td class="k">Архив поездок</td><td class="mut">уже сворачивается при извлечении: 5 млн → 300 тыс. строк на город в месяц</td></tr>
+<tr class="rw" style="--d:3"><td class="k">Сборщик</td><td class="mut">параллельные задачи Airflow по городам, max_active_tasks</td></tr>
+</table>
+</section>
+
+<section class="slide alt" id="s-issues">
+<div class="col"><p class="eyebrow r" style="--d:0">Запасной · сложности</p><h2 class="r" style="--d:1">Что пошло не так на стенде и как я это решила</h2></div>
+<table class="tb">
+<tr><th style="width:42%">Проблема</th><th>Решение</th></tr>
+<tr class="rw" style="--d:0"><td class="k">DAG не появлялись в Airflow</td><td class="mut">стенд принимает DAG только через обёртку student_dag, к dag_id добавляется префикс «ozbekova.»</td></tr>
+<tr class="rw" style="--d:1"><td class="k">Сборщик: Permission denied на CSV</td><td class="mut">файлы из Jupyter принадлежали другому пользователю — выдала права на папку data</td></tr>
+<tr class="rw" style="--d:2"><td class="k">Нет Confluent JDBC sink</td><td class="mut">переписала sink на Debezium JdbcSinkConnector</td></tr>
+<tr class="rw" style="--d:3"><td class="k">Connection нельзя изменить</td><td class="mut">создала новое подключение ch_ozbekova сразу с паролем</td></tr>
+</table>
+</section>
+
+<section class="slide" id="s-demo">
+<div class="col"><p class="eyebrow r" style="--d:0">Запасной · демо</p><h2 class="r" style="--d:1">Показываю вживую</h2></div>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px">
+<div class="card col r" style="--d:2;gap:12px;padding:36px"><p class="big bk" style="font-size:56px">1</p><h3>Superset</h3><p class="mut" style="font-size:26px">Дашборд: −18%, карта станций, часы пик</p></div>
+<div class="card col r" style="--d:3;gap:12px;padding:36px"><p class="big bk" style="font-size:56px">2</p><h3>CDC</h3><p class="mut" style="font-size:26px">Меняю заявку на «сайте» — через секунды она в ods</p></div>
+<div class="card col r" style="--d:4;gap:12px;padding:36px"><p class="big bk" style="font-size:56px">3</p><h3>Airflow</h3><p class="mut" style="font-size:26px">Clear за 20.10 — строк столько же, дублей нет</p></div>
+<div class="card col r" style="--d:5;gap:12px;padding:36px"><p class="big bk" style="font-size:56px">4</p><h3>dbt docs</h3><p class="mut" style="font-size:26px">Граф происхождения данных: от источников до витрин</p></div>
+</div>
+</section>
+
+<div id="bar"></div><div id="num"></div><div id="brand">CITI BIKE DWH · ОЗБЕКОВА</div>
+</div>
+<div id="help">← → / пробел — слайды · F — полный экран</div>
+
+<script>
+(function(){
+const stage=document.getElementById('stage');
+const slides=[...document.querySelectorAll('.slide')];
+const MAIN=7;
+const bar=document.getElementById('bar'),num=document.getElementById('num');
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+let cur=-1,jump='';
+function fit(){const s=Math.min(innerWidth/1920,innerHeight/1080);stage.style.transform=`scale(${s})`;stage.style.left=((innerWidth-1920*s)/2)+'px';stage.style.top=((innerHeight-1080*s)/2)+'px';}
+addEventListener('resize',fit);fit();
+
+// 96 snapshot ticks = one day
+(function(){const g=document.getElementById('ticks');let h='';for(let i=0;i<96;i++)h+=`<i style="--k:${i}"></i>`;g.innerHTML=h;g.style.gridTemplateColumns='repeat(48,1fr)';})();
+
+function fmt(v,d){let s=v.toFixed(d);let [a,b]=s.split('.');a=a.replace(/\B(?=(\d{3})+(?!\d))/g,' ');return b?a+','+b:a;}
+function countUp(el){const to=parseFloat(el.dataset.count),d=+(el.dataset.dec||0);
+ if(reduce){el.textContent=fmt(to,d);return;}
+ const dur=1600,st=performance.now()+300;
+ function f(n){const p=Math.min(1,Math.max(0,(n-st)/dur)),e=1-Math.pow(1-p,3);el.textContent=fmt(to*e,d);
+  if(p<1&&el.closest('.slide').classList.contains('active'))requestAnimationFrame(f);else if(p>=1)el.textContent=fmt(to,d);}
+ el.textContent=fmt(0,d);requestAnimationFrame(f);}
+
+const hooks={};
+const act=s=>s.classList.contains('active');
+function go(i){i=Math.max(0,Math.min(slides.length-1,i));if(i===cur)return;
+ if(cur>=0){const o=slides[cur];o.classList.remove('active');reset(o);}
+ cur=i;const s=slides[i];void s.offsetWidth;s.classList.add('active');
+ s.querySelectorAll('[data-count]').forEach(countUp);
+ s.querySelectorAll('.bar[data-w]').forEach(b=>{b.style.width='0';setTimeout(()=>b.style.width=b.dataset.w,reduce?0:(+(b.dataset.delay||700)));});
+ if(hooks[s.id])hooks[s.id](s);
+ bar.style.width=((i+1)/slides.length*100)+'%';
+ num.textContent=String(i+1).padStart(2,'0')+' / '+String(slides.length).padStart(2,'0');
+ try{history.replaceState(null,'','#'+(i+1));}catch(e){}}
+function reset(s){s.querySelectorAll('.bar').forEach(b=>b.style.width='0');}
+function next(){go(cur+1)} function prev(){go(cur-1)}
+addEventListener('keydown',e=>{const k=e.key;
+ if(/^[0-9]$/.test(k)){jump+=k;num.textContent='→ '+jump;return;}
+ if(k==='Enter'&&jump){e.preventDefault();const n=parseInt(jump,10);jump='';go(n-1);return;}
+ if(k==='Escape'){jump='';go(cur);return;}
+ if(['ArrowRight','ArrowDown','PageDown',' ','Enter'].includes(k)){e.preventDefault();next();}
+ else if(['ArrowLeft','ArrowUp','PageUp','Backspace'].includes(k)){e.preventDefault();prev();}
+ else if(k==='Home')go(0);else if(k==='End')go(MAIN-1);
+ else if('fFаА'.includes(k)){try{document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen().catch(()=>{});}catch(err){}}
+});
+addEventListener('click',e=>{(e.clientX>innerWidth*0.3?next:prev)();});
+let tx=null;addEventListener('touchstart',e=>tx=e.touches[0].clientX,{passive:true});
+addEventListener('touchend',e=>{if(tx===null)return;const dx=e.changedTouches[0].clientX-tx;if(Math.abs(dx)>50)(dx<0?next:prev)();tx=null;});
+setTimeout(()=>document.getElementById('help').style.opacity=0,7000);
+
+// ---------- station map (cover + summary) ----------
+function rnd(a,b){return a+Math.random()*(b-a);}
+function makeStations(){const S=[];
+ // Manhattan: an angled strip
+ const A={x:1230,y:1000},B={x:1530,y:110};
+ for(let i=0;i<180;i++){const u=Math.random(),w=(70+40*Math.sin(u*3.1))*(Math.random()*2-1);
+  const dx=B.x-A.x,dy=B.y-A.y,L=Math.hypot(dx,dy),nx=-dy/L,ny=dx/L;
+  const biz=(u>0.30&&u<0.52)||u<0.10;
+  S.push({x:A.x+dx*u+nx*w,y:A.y+dy*u+ny*w,biz,small:!biz&&Math.random()<0.6,th:Math.random()});}
+ // Brooklyn
+ for(let i=0;i<120;i++){const a=Math.random()*6.283,r=Math.sqrt(Math.random());S.push({x:1610+Math.cos(a)*190*r,y:900+Math.sin(a)*120*r,biz:false,small:Math.random()<0.65,th:Math.random()});}
+ // Queens
+ for(let i=0;i<55;i++){const a=Math.random()*6.283,r=Math.sqrt(Math.random());S.push({x:1730+Math.cos(a)*100*r,y:560+Math.sin(a)*150*r,biz:false,small:Math.random()<0.6,th:Math.random()});}
+ return S;}
+function mapAnim(canvasId,mode,clockId){const c=document.getElementById(canvasId),x=c.getContext('2d');const S=makeStations();const clk=clockId?document.getElementById(clockId):null;let bikes=[];
+ return function(s){const t1=performance.now();
+  function f(now){if(!act(s))return;
+   let h=8,ePeak=0;
+   if(mode==='rush'){const T=reduce?7.8:((now-t1)/1000)%11; h=6+Math.min(T,9)/9*3; ePeak=0.62*Math.exp(-Math.pow((h-8)/0.6,2));}
+   x.clearRect(0,0,1920,1080);
+   let empty=0;
+   for(const p of S){const e=mode==='rush'?(p.biz?0.04:(p.small?ePeak:ePeak*0.45)):0;const isE=p.th<e;if(isE)empty++;
+    if(isE){const pul=reduce?1:0.75+0.25*Math.sin(now/180+p.th*20);x.fillStyle=`rgba(255,138,76,${pul})`;x.shadowColor='#FF8A4C';x.shadowBlur=14;x.beginPath();x.arc(p.x,p.y,p.small?4.5:6.5,0,7);x.fill();x.shadowBlur=0;}
+    else{x.fillStyle=p.biz?'rgba(62,230,168,.95)':'rgba(62,230,168,.6)';x.beginPath();x.arc(p.x,p.y,p.small?3.2:5,0,7);x.fill();}}
+   // commuters ride from homes to offices in the morning
+   const rate=mode==='rush'?ePeak*0.9+0.05:0.08;
+   if(!reduce&&Math.random()<rate){const a=S[Math.floor(Math.random()*S.length)];const pool=mode==='rush'?S.filter(q=>q.biz):S;const b=pool[Math.floor(Math.random()*pool.length)];if(a!==b)bikes.push({a,b,t:0});}
+   for(let k=bikes.length-1;k>=0;k--){const q=bikes[k];q.t+=0.012;if(q.t>1){bikes.splice(k,1);continue;}
+    const px=q.a.x+(q.b.x-q.a.x)*q.t,py=q.a.y+(q.b.y-q.a.y)*q.t;x.fillStyle='#EEF3F8';x.beginPath();x.arc(px,py,2.6,0,7);x.fill();}
+   if(clk&&mode==='rush'){const hh=Math.floor(h),mm=Math.floor((h-hh)*60/5)*5;clk.innerHTML=`<span style="color:#EEF3F8;font-size:56px;font-weight:700">${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}</span><br>пустых станций: <span style="color:${empty>20?'#FF8A4C':'#3EE6A8'}">${Math.round(empty/S.length*100)}%</span>`;}
+   if(!reduce)requestAnimationFrame(f);}
+  requestAnimationFrame(f);};}
+hooks['s-cover']=mapAnim('map1','rush','clock1');
+hooks['s-sum']=mapAnim('map2','calm',null);
+
+// ---------- rain ----------
+(function(){const c=document.getElementById('rain'),x=c.getContext('2d');const D=[];for(let i=0;i<140;i++)D.push({x:Math.random()*1920,y:Math.random()*1080,v:rnd(9,16),l:rnd(14,30)});
+ hooks['s-weather']=s=>{function f(){if(!act(s))return;x.clearRect(0,0,1920,1080);x.strokeStyle='rgba(124,196,255,.35)';x.lineWidth=2;x.beginPath();
+  for(const d of D){x.moveTo(d.x,d.y);x.lineTo(d.x-d.l*0.25,d.y+d.l);if(!reduce){d.y+=d.v;d.x-=d.v*0.25;if(d.y>1080){d.y=-30;d.x=Math.random()*2100;}}}
+  x.stroke();if(!reduce)requestAnimationFrame(f);}f();};})();
+
+// ---------- rush chart ----------
+hooks['s-rush']=s=>{s.querySelectorAll('.vb').forEach((r,i)=>{r.animate([{transform:'scaleY(0)'},{transform:'scaleY(1)'}],{duration:reduce?0:1000,delay:reduce?0:500+i*160,fill:'both',easing:'cubic-bezier(.2,.8,.2,1)'});});
+ s.querySelectorAll('.vl text').forEach((t,i)=>{t.animate([{opacity:0},{opacity:1}],{duration:reduce?0:400,delay:reduce?0:1300+i*160,fill:'both'});});};
+
+const start=parseInt((location.hash||'').slice(1),10)||1;go(start-1);
+})();
+</script>
+
+</html>

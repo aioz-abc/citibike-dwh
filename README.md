@@ -1,3 +1,33 @@
+# Citi Bike DWH — when and where bike stations run empty
+
+**AI Academy · Data Engineering final project · Aizhan Ozbekova**
+
+📊 **[Open the presentation](https://aioz-abc.github.io/citibike-dwh/presentation/)** (arrow keys to switch slides)
+
+At 8 a.m. a rider walks up to a Citi Bike station and finds no bikes, so the trip is lost. This warehouse
+gives the team that redistributes bikes the data to answer three questions: **when stations run empty,
+how weather affects demand, and which stations suffer most.**
+
+**Data:** live status of ~2,500 NYC stations every 15 minutes (~240k rows/day, GBFS), the station
+directory, daily weather (Open-Meteo), and ~15 million trips for summer 2026 (~3 GB of archives).
+
+**How it works**
+- **Airflow** orchestrates four DAGs; any day can be re-run without duplicates (idempotent loads).
+- **PostgreSQL** in three layers: raw `stg` → cleaned `ods` → five `datamart` tables.
+- **ClickHouse** holds a copy of the marts for a fast dashboard (Superset).
+- **Debezium + Kafka CDC** streams station repair tickets from the site database within seconds.
+- **Quality gates:** 21 data-quality checks in the DAGs and 37 dbt tests stop bad data before the dashboard.
+
+**Findings**
+- On a rainy weekday there are **18% fewer trips**, and **28% fewer** in heavy rain. Casual riders drop
+  off the most, so redistribution can be scaled down ahead of a rain forecast.
+
+**Stack:** Python · Airflow · PostgreSQL · dbt · ClickHouse · Kafka · Debezium · Superset
+
+The detailed documentation below is in Russian.
+
+---
+
 # Финальный проект ozbekova — Citi Bike + погода
 
 Мини-хранилище: снимки станций Citi Bike (GBFS) и справочник станций из CSV, погода из API
